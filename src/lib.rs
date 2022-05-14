@@ -1,6 +1,6 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{UnorderedSet, UnorderedMap};
-use near_sdk::{env, near_bindgen, AccountId, Promise};
+use near_sdk::{env, near_bindgen, AccountId, Promise, Balance};
 
 near_sdk::setup_alloc!();
 
@@ -57,9 +57,6 @@ impl EvenOdd {
 
     #[payable]
     pub fn bet(&mut self, is_even: bool) {
-        println!("account_balance {}", env::account_balance());
-        println!("account_locked_balance {}", env::account_locked_balance());
-        println!("account_signer {}", env::signer_account_id());
         let account = env::predecessor_account_id();
         let amount = env::attached_deposit();
         assert_ne!(
@@ -70,6 +67,12 @@ impl EvenOdd {
         assert!(
             self.is_already_bet(account.clone()),
             "Already bet"
+        );
+
+        assert_ne!(
+            self.get_balance(),
+            amount * 2,
+            "total bet amount exceeds dealer balance"
         );
         
         self.players.insert(&account, &PlayerMetadata { bet_amount: amount, player: account.clone(), is_even: is_even});
@@ -89,7 +92,11 @@ impl EvenOdd {
         let dice_number_1: u8 = self.generate_random_number();
         let dice_number_2: u8 = self.generate_random_number();
 
-        let is_even: bool = (dice_number_1 + dice_number_2) % 2 == 0;
+        println!("dice_number_1 {} dice_number_2 {}", dice_number_1, dice_number_2);
+
+        let is_even: bool = (dice_number_1 + dice_number_2)  % 2 == 0;
+
+        println!("is_even {}", is_even);
 
         let log_message = format!("DiceRolled at {}, dice number 1: {}, dice number 2: {}, is_even: {}", self.roll_id, dice_number_1, dice_number_2, is_even);
         env::log(log_message.as_bytes());
@@ -120,7 +127,8 @@ impl EvenOdd {
     }
 
     fn generate_random_number(&mut self) -> u8 {
-        let rand: u8 = *env::random_seed().get(0).unwrap();
+        // let rand: u8 = *env::random_seed().get(0).unwrap();
+        let rand: u8 = rand::random::<u8>() % 6 + 1;
         rand
     }
 
@@ -153,6 +161,10 @@ impl EvenOdd {
             Some(data) => if data.bet_amount > 0 { return true; } else { return false;},
             None => true
         }
+    }
+
+    pub fn get_balance(&self) -> Balance {
+        env::account_balance()
     }
 }
 
@@ -194,62 +206,87 @@ mod tests {
         testing_env!(context
             .storage_usage(env::storage_usage())
             .attached_deposit(MINT_STORAGE_COST)
-            .predecessor_account_id(accounts(0))
+            .predecessor_account_id(accounts(1))
             .build());
         contract.bet(true);
 
-        let mut result = contract.get_player(accounts(0).to_string());
+        let mut result = contract.get_player(accounts(1).to_string());
         assert_eq!(result.bet_amount, MINT_STORAGE_COST);
         assert_eq!(result.is_even, true);
-        assert_eq!(result.player, accounts(0).to_string());
+        assert_eq!(result.player, accounts(1).to_string());
 
         contract.bet(false);
-        result = contract.get_player(accounts(0).to_string());
+        result = contract.get_player(accounts(1).to_string());
         assert_eq!(result.bet_amount, MINT_STORAGE_COST);
         assert_eq!(result.is_even, false);
-        assert_eq!(result.player, accounts(0).to_string());
+        assert_eq!(result.player, accounts(1).to_string());
 
         assert_eq!(contract.get_total_bet_amount_per_roll(), MINT_STORAGE_COST * 2);
         assert_eq!(contract.get_total_bet_amount(), MINT_STORAGE_COST * 2);
 
+        testing_env!(context
+            .storage_usage(env::storage_usage())
+            .attached_deposit(0)
+            .predecessor_account_id(accounts(0))
+            .build());
         contract.reset_board();
     }
 
     #[test]
-    fn test_reset_board() {
+    fn test_roll_dice() {
         let mut context = get_context(accounts(1));
         testing_env!(context.build());
         let mut contract = EvenOdd::new(accounts(0).into());
 
+        println!("contract balance {}", contract.get_balance());
+
         testing_env!(context
             .storage_usage(env::storage_usage())
-            .attached_deposit(MINT_STORAGE_COST)
             .predecessor_account_id(accounts(1))
+            .attached_deposit(MINT_STORAGE_COST)
             .build());
-        println!("account_balance before {}", env::account_balance());
         contract.bet(true);
+        println!("account 1 balance {}", contract.get_balance());
 
-        context = get_context(accounts(2));
         testing_env!(context
             .storage_usage(env::storage_usage())
-            .attached_deposit(MINT_STORAGE_COST)
             .predecessor_account_id(accounts(2))
+            .attached_deposit(MINT_STORAGE_COST + 1)
             .build());
 
+        println!("account 2 balance before {}", contract.get_balance());
         contract.bet(false);
-        println!("account_balance after {}", env::account_balance());
         println!("owner contract {}", contract.get_owner());
+        println!("account 2 balance {}", contract.get_balance());
 
         println!("{:?}", contract.get_player(accounts(1).to_string()));
         println!("{:?}", contract.get_player(accounts(2).to_string()));
 
-        context = get_context(accounts(0));
         testing_env!(context
-            .storage_usage(env::storage_usage())
-            .attached_deposit(MINT_STORAGE_COST)
             .predecessor_account_id(accounts(0))
+            .attached_deposit(0)
+            .build());
+            println!("contract balance {}", contract.get_balance());
+        // contract.reset_board();
+        contract.roll_dice();
+        println!("contract after balance {}", contract.get_balance());
+        
+        testing_env!(context
+            .predecessor_account_id(accounts(2))
+            .build());
+            println!("account 2 balance {}", contract.get_balance());
+
+            testing_env!(context
+            .predecessor_account_id(accounts(1))
+            .build());
+            println!("account 1 balance {}", contract.get_balance());
+
+        testing_env!(context
+            .account_balance(env::account_balance())
+            .is_view(true)
+            .attached_deposit(0)
             .build());
 
-        contract.reset_board();
+            println!("account 3 balance {}", contract.get_balance());
     }
 }
