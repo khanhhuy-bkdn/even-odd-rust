@@ -1,9 +1,9 @@
 near_sdk_sim::lazy_static_include::lazy_static_include_bytes! {
     // update `contract.wasm` for your contract's name
-    CONTRACT_WASM_BYTES => "target/wasm32-unknown-unknown/release/contract.wasm",
+    CONTRACT_WASM_BYTES => "target/wasm32-unknown-unknown/release/even_odd.wasm",
 
     // if you run `cargo build` without `--release` flag:
-    CONTRACT_WASM_BYTES => "target/wasm32-unknown-unknown/debug/contract.wasm",
+    CONTRACT_WASM_BYTES => "target/wasm32-unknown-unknown/debug/even_odd.wasm",
 }
 use near_sdk_sim::{deploy, init_simulator, to_yocto, STORAGE_AMOUNT};
 use token::EvenOddContract;
